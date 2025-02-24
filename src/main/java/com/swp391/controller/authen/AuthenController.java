@@ -101,6 +101,8 @@ public class AuthenController extends HttpServlet {
 
     private String loginDoPost(HttpServletRequest request, HttpServletResponse response) {
         String url = null;
+        HttpSession session = request.getSession();
+        
         // get về các thong tin người dufg nhập
         String usernameOrEmail = request.getParameter("username");
         String password = request.getParameter("password");
@@ -113,12 +115,11 @@ public class AuthenController extends HttpServlet {
         Account accFoundByUsernamePass = accountDAO.findByEmailOrUsernameAndPass(account);
         // true => trang home ( set account vao trong session )
         if (accFoundByUsernamePass != null) {
-            request.getSession().setAttribute(GlobalConfig.SESSION_ACCOUNT,
-                    accFoundByUsernamePass);
+            session.setAttribute(GlobalConfig.SESSION_ACCOUNT, accFoundByUsernamePass);
             url = HOME_PAGE;
-            // false => quay tro lai trang login ( set them thong bao loi )
         } else {
-            request.setAttribute("error", "Username or password incorrect!!");
+            session.setAttribute("toastMessage", "Username or password incorrect!!");
+            session.setAttribute("toastType", "error");
             url = LOGIN_PAGE;
         }
         return url;
@@ -150,9 +151,9 @@ public class AuthenController extends HttpServlet {
                 .phone(mobile)
                 .email(email)
                 .password(MD5PasswordEncoderUtils.encodeMD5(password))
-                .role(GlobalConfig.ROLE_STUDENT)
-                .isActive(false)
-                .status(gender)
+                .role(GlobalConfig.ROLE_USER)
+                // .stat(false)
+                .status(false)
                 .build();
         Account accountFoundByEmail = accountDAO.findByEmail(account);
 
@@ -257,7 +258,7 @@ public class AuthenController extends HttpServlet {
     private String handleAccountActivation(HttpServletRequest request, HttpSession session) {
         Account account = (Account) session.getAttribute(GlobalConfig.SESSION_ACCOUNT);
         if (account != null) {
-            account.setIsActive(true);
+            account.setStatus(true);
             accountDAO.activateAccount(account.getUserId());
             request.setAttribute("message", "Your account has been successfully activated!");
             return HOME_PAGE;
