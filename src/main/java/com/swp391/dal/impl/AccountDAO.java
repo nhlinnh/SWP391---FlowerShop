@@ -27,27 +27,27 @@ public class AccountDAO extends DBContext implements I_DAO<Account> {
 
     @Override
     public List<Account> findAll() {
-        List<Account> accounts = new ArrayList<>();
+        List<Account> account = new ArrayList<>();
         String sql = "SELECT * FROM account";
         try {
             connection = getConnection();
             statement = connection.prepareStatement(sql);
             resultSet = statement.executeQuery();
             while (resultSet.next()) {
-                accounts.add(getFromResultSet(resultSet));
+                account.add(getFromResultSet(resultSet));
             }
         } catch (SQLException ex) {
             System.out.println(ex.getMessage());
         } finally {
             closeResources();
         }
-        return accounts;
+        return account;
     }
 
     @Override
     public boolean update(Account account) {
         String sql = "UPDATE account SET username = ?, email = ?, password = ?, avatar = ?, first_name = ?, " +
-                "last_name = ?, phone = ?, address = ?, role = ?, status = ?, is_active = ? WHERE user_id = ?";
+                "last_name = ?, phone = ?, address = ?, role = ?, status = ? WHERE user_id = ?";
 
         try {
             connection = getConnection();
@@ -62,8 +62,7 @@ public class AccountDAO extends DBContext implements I_DAO<Account> {
             statement.setString(8, account.getAddress());
             statement.setString(9, account.getRole());
             statement.setObject(10, account.getStatus());
-            statement.setObject(11, account.getIsActive());
-            statement.setInt(12, account.getUserId());
+            statement.setInt(11, account.getUserId());
 
             int affectedRows = statement.executeUpdate();
             return affectedRows > 0;
@@ -84,7 +83,7 @@ public class AccountDAO extends DBContext implements I_DAO<Account> {
     @Override
     public int insert(Account account) {
         String sql = "INSERT INTO account (username, email, password, avatar, first_name, last_name, " +
-                "phone, address, role, status, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                "phone, address, role, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try {
             connection = getConnection();
@@ -99,7 +98,6 @@ public class AccountDAO extends DBContext implements I_DAO<Account> {
             statement.setString(8, account.getAddress());
             statement.setString(9, account.getRole());
             statement.setObject(10, account.getStatus());
-            statement.setObject(11, account.getIsActive());
 
             int affectedRows = statement.executeUpdate();
 
@@ -135,14 +133,13 @@ public class AccountDAO extends DBContext implements I_DAO<Account> {
         account.setAddress(rs.getString("address"));
         account.setRole(rs.getString("role"));
         account.setStatus(rs.getBoolean("status"));
-        account.setIsActive(rs.getBoolean("is_active"));
         account.setCreatedAt(rs.getTimestamp("created_at").toLocalDateTime());
         account.setUpdatedAt(rs.getTimestamp("updated_at").toLocalDateTime());
         return account;
     }
 
     public List<Account> findAllNonAdminAccounts(int page, int pageSize) {
-        List<Account> accounts = new ArrayList<>();
+        List<Account> account = new ArrayList<>();
         String sql = "SELECT * FROM account WHERE role_id != ? ORDER BY id LIMIT ? OFFSET ?";
         try {
             connection = getConnection();
@@ -152,14 +149,14 @@ public class AccountDAO extends DBContext implements I_DAO<Account> {
             statement.setInt(3, (page - 1) * pageSize);
             resultSet = statement.executeQuery();
             while (resultSet.next()) {
-                accounts.add(getFromResultSet(resultSet));
+                account.add(getFromResultSet(resultSet));
             }
         } catch (SQLException ex) {
-            System.out.println("Error finding non-admin accounts: " + ex.getMessage());
+            System.out.println("Error finding non-admin account: " + ex.getMessage());
         } finally {
             closeResources();
         }
-        return accounts;
+        return account;
     }
 
     public int getTotalNonAdminAccounts() {
@@ -173,7 +170,7 @@ public class AccountDAO extends DBContext implements I_DAO<Account> {
                 return resultSet.getInt(1);
             }
         } catch (SQLException ex) {
-            System.out.println("Error counting non-admin accounts: " + ex.getMessage());
+            System.out.println("Error counting non-admin account: " + ex.getMessage());
         } finally {
             closeResources();
         }
@@ -219,7 +216,7 @@ public class AccountDAO extends DBContext implements I_DAO<Account> {
     }
 
     public boolean activateAccount(int accountId) {
-        String sql = "UPDATE account SET Status = 'Active' WHERE id = ?";
+        String sql = "UPDATE account SET Status = true WHERE user_id = ?";
         try {
             connection = getConnection();
             statement = connection.prepareStatement(sql);
@@ -287,7 +284,7 @@ public class AccountDAO extends DBContext implements I_DAO<Account> {
     }
 
     public boolean deactivateAccount(int accountId) {
-        String sql = "UPDATE account SET Status = 'Inactive' WHERE id = ?";
+        String sql = "UPDATE account SET status = false WHERE user_id = ?";
         try {
             connection = getConnection();
             statement = connection.prepareStatement(sql);
@@ -323,31 +320,25 @@ public class AccountDAO extends DBContext implements I_DAO<Account> {
         return authorNames;
     }
 
-    public List<Account> findAccountsWithFilters(String roleFilter, String genderFilter,
+    public List<Account> findAccountsWithFilters(String roleFilter,
             String statusFilter, String searchFilter, int page, int pageSize) {
-        List<Account> accounts = new ArrayList<>();
-        StringBuilder sql = new StringBuilder("SELECT * FROM account WHERE role_id != ? ");
+        List<Account> account = new ArrayList<>();
+        StringBuilder sql = new StringBuilder("SELECT * FROM account WHERE 1=1 ");
         List<Object> params = new ArrayList<>();
-        params.add(GlobalConfig.ROLE_ADMIN);
 
-        // Add filters to query
+        // Add filters
         if (roleFilter != null && !roleFilter.isEmpty()) {
-            sql.append("AND role_id = ? ");
-            params.add(Integer.parseInt(roleFilter));
-        }
-
-        if (genderFilter != null && !genderFilter.isEmpty()) {
-            sql.append("AND gender = ? ");
-            params.add(genderFilter.equals("2")); // 2 for male, 3 for female
+            sql.append("AND role = ? ");
+            params.add(roleFilter);
         }
 
         if (statusFilter != null && !statusFilter.isEmpty()) {
-            sql.append("AND is_active = ? ");
+            sql.append("AND status = ? ");
             params.add(Boolean.parseBoolean(statusFilter));
         }
 
         if (searchFilter != null && !searchFilter.trim().isEmpty()) {
-            sql.append("AND (email LIKE ? OR username LIKE ? OR full_name LIKE ?) ");
+            sql.append("AND (email LIKE ? OR username LIKE ? OR CONCAT(first_name, ' ', last_name) LIKE ?) ");
             String searchPattern = "%" + searchFilter.trim() + "%";
             params.add(searchPattern);
             params.add(searchPattern);
@@ -355,55 +346,47 @@ public class AccountDAO extends DBContext implements I_DAO<Account> {
         }
 
         // Add pagination
-        sql.append("ORDER BY id LIMIT ? OFFSET ?");
+        sql.append("ORDER BY created_at LIMIT ? OFFSET ?");
         params.add(pageSize);
         params.add((page - 1) * pageSize);
 
         try {
             connection = getConnection();
             statement = connection.prepareStatement(sql.toString());
-
-            // Set parameters
             for (int i = 0; i < params.size(); i++) {
                 statement.setObject(i + 1, params.get(i));
             }
 
             resultSet = statement.executeQuery();
             while (resultSet.next()) {
-                accounts.add(getFromResultSet(resultSet));
+                account.add(getFromResultSet(resultSet));
             }
         } catch (SQLException ex) {
-            System.out.println("Error finding filtered accounts: " + ex.getMessage());
+            System.out.println("Error finding filtered account: " + ex.getMessage());
         } finally {
             closeResources();
         }
-        return accounts;
+        return account;
     }
 
-    public int getTotalFilteredAccounts(String roleFilter, String genderFilter, 
+    public int getTotalFilteredAccounts(String roleFilter, 
             String statusFilter, String searchFilter) {
-        StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM account WHERE role_id != ? ");
+        StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM account WHERE 1=1 ");
         List<Object> params = new ArrayList<>();
-        params.add(GlobalConfig.ROLE_ADMIN);
 
-        // Add filters to query
+        // Add filters
         if (roleFilter != null && !roleFilter.isEmpty()) {
-            sql.append("AND role_id = ? ");
-            params.add(Integer.parseInt(roleFilter));
+            sql.append("AND role = ? ");
+            params.add(roleFilter);
         }
-        
-        if (genderFilter != null && !genderFilter.isEmpty()) {
-            sql.append("AND gender = ? ");
-            params.add(genderFilter.equals("2")); // 2 for male, 3 for female
-        }
-        
+
         if (statusFilter != null && !statusFilter.isEmpty()) {
-            sql.append("AND is_active = ? ");
+            sql.append("AND status = ? ");
             params.add(Boolean.parseBoolean(statusFilter));
         }
-        
+
         if (searchFilter != null && !searchFilter.trim().isEmpty()) {
-            sql.append("AND (email LIKE ? OR username LIKE ? OR full_name LIKE ?) ");
+            sql.append("AND (email LIKE ? OR username LIKE ? OR CONCAT(first_name, ' ', last_name) LIKE ?) ");
             String searchPattern = "%" + searchFilter.trim() + "%";
             params.add(searchPattern);
             params.add(searchPattern);
@@ -413,29 +396,128 @@ public class AccountDAO extends DBContext implements I_DAO<Account> {
         try {
             connection = getConnection();
             statement = connection.prepareStatement(sql.toString());
-            
-            // Set parameters
             for (int i = 0; i < params.size(); i++) {
                 statement.setObject(i + 1, params.get(i));
             }
-            
+
             resultSet = statement.executeQuery();
             if (resultSet.next()) {
                 return resultSet.getInt(1);
             }
         } catch (SQLException ex) {
-            System.out.println("Error counting filtered accounts: " + ex.getMessage());
+            System.out.println("Error counting filtered account: " + ex.getMessage());
         } finally {
             closeResources();
         }
         return 0;
     }
 
+    /**
+     * Check if username already exists
+     * @param username Username to check
+     * @return true if username exists, false otherwise
+     */
+    public boolean isUsernameExists(String username) {
+        String sql = "SELECT COUNT(*) FROM account WHERE username = ?";
+        try {
+            connection = getConnection();
+            statement = connection.prepareStatement(sql);
+            statement.setString(1, username);
+            resultSet = statement.executeQuery();
+            if (resultSet.next()) {
+                return resultSet.getInt(1) > 0;
+            }
+        } catch (SQLException e) {
+            System.out.println("Error checking username existence: " + e.getMessage());
+        } finally {
+            closeResources();
+        }
+        return false;
+    }
+
+    /**
+     * Check if email already exists
+     * @param email Email to check
+     * @param excludeId Account ID to exclude from check (for updates)
+     * @return true if email exists, false otherwise
+     */
+    public boolean isEmailExists(String email, Integer excludeId) {
+        String sql = "SELECT COUNT(*) FROM account WHERE email = ?";
+        if (excludeId != null) {
+            sql += " AND id != ?";
+        }
+        try {
+            connection = getConnection();
+            statement = connection.prepareStatement(sql);
+            statement.setString(1, email);
+            if (excludeId != null) {
+                statement.setInt(2, excludeId);
+            }
+            resultSet = statement.executeQuery();
+            if (resultSet.next()) {
+                return resultSet.getInt(1) > 0;
+            }
+        } catch (SQLException e) {
+            System.out.println("Error checking email existence: " + e.getMessage());
+        } finally {
+            closeResources();
+        }
+        return false;
+    }
+
+    /**
+     * Check if phone already exists
+     * @param phone Phone to check
+     * @param excludeId Account ID to exclude from check (for updates)
+     * @return true if phone exists, false otherwise
+     */
+    public boolean isPhoneExists(String phone, Integer excludeId) {
+        String sql = "SELECT COUNT(*) FROM account WHERE phone = ?";
+        if (excludeId != null) {
+            sql += " AND id != ?";
+        }
+        try {
+            connection = getConnection();
+            statement = connection.prepareStatement(sql);
+            statement.setString(1, phone);
+            if (excludeId != null) {
+                statement.setInt(2, excludeId);
+            }
+            resultSet = statement.executeQuery();
+            if (resultSet.next()) {
+                return resultSet.getInt(1) > 0;
+            }
+        } catch (SQLException e) {
+            System.out.println("Error checking phone existence: " + e.getMessage());
+        } finally {
+            closeResources();
+        }
+        return false;
+    }
+
     public static void main(String[] args) {
         AccountDAO accountDAO = new AccountDAO();
-        List<Account> accounts = accountDAO.findAll();
-        for (Account account : accounts) {
-            System.out.println(account);
+        
+        // Create a new account
+        Account newAccount = new Account();
+        newAccount.setUsername("1234565");
+        newAccount.setEmail("ass@example.com");
+        newAccount.setPassword("test123");
+        newAccount.setAvatar("default.jpg");
+        newAccount.setFirstName("Test");
+        newAccount.setLastName("User");
+        newAccount.setPhone("1234567890");
+        newAccount.setAddress("123 Test Street");
+        newAccount.setRole("USER");
+        newAccount.setStatus(true);
+        
+        // Insert the account
+        int newId = accountDAO.insert(newAccount);
+        
+        if (newId > 0) {
+            System.out.println("Account inserted successfully! New ID: " + newId);
+        } else {
+            System.out.println("Failed to insert account.");
         }
     }
 

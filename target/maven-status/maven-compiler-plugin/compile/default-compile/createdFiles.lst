@@ -12,5 +12,4 @@ com\swp391\utils\MD5PasswordEncoderUtils.class
 com\swp391\dal\impl\AccountDAO.class
 com\swp391\controller\RemoveToastServlet.class
 com\swp391\entity\Account.class
-.netbeans_automatic_build
 com\swp391\entity\Account$AccountBuilder.class
