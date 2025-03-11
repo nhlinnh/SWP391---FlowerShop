@@ -17,6 +17,7 @@ import com.swp391.config.GlobalConfig;
 import com.swp391.utils.MD5PasswordEncoderUtils;
 import com.swp391.utils.EmailUtils;
 import jakarta.servlet.http.HttpSession;
+import java.util.Map;
 
 @WebServlet(name = "AuthenController", urlPatterns = { "/authen" })
 public class AuthenController extends HttpServlet {
@@ -28,6 +29,8 @@ public class AuthenController extends HttpServlet {
     private static final String VERIFY_OTP_PAGE = "view/authen/verifyOTP.jsp";
     private static final String RESET_PASSWORD_PAGE = "view/authen/resetPassword.jsp";
     private static final String HOME_PAGE = "home";
+
+    private static final String PASSWORD_COMPLEXITY_REGEX = "(?=.*\\d)(?=.*[a-z])(?=.*[A-Z]).{8,}"; // 8+ chars, 1 uppercase, 1 lowercase, 1 number
 
     AccountDAO accountDAO = new AccountDAO();
 
@@ -101,6 +104,8 @@ public class AuthenController extends HttpServlet {
 
     private String loginDoPost(HttpServletRequest request, HttpServletResponse response) {
         String url = null;
+        HttpSession session = request.getSession();
+        
         // get về các thong tin người dufg nhập
         String usernameOrEmail = request.getParameter("username");
         String password = request.getParameter("password");
@@ -113,12 +118,11 @@ public class AuthenController extends HttpServlet {
         Account accFoundByUsernamePass = accountDAO.findByEmailOrUsernameAndPass(account);
         // true => trang home ( set account vao trong session )
         if (accFoundByUsernamePass != null) {
-            request.getSession().setAttribute(GlobalConfig.SESSION_ACCOUNT,
-                    accFoundByUsernamePass);
+            session.setAttribute(GlobalConfig.SESSION_ACCOUNT, accFoundByUsernamePass);
             url = HOME_PAGE;
-            // false => quay tro lai trang login ( set them thong bao loi )
         } else {
-            request.setAttribute("error", "Username or password incorrect!!");
+            session.setAttribute("toastMessage", "Username or password incorrect!!");
+            session.setAttribute("toastType", "error");
             url = LOGIN_PAGE;
         }
         return url;
@@ -126,19 +130,49 @@ public class AuthenController extends HttpServlet {
 
     private String signUp(HttpServletRequest request, HttpServletResponse response) {
         String url;
+        HttpSession session = request.getSession();
+        
         // Lấy thông tin người dùng nhập
         String username = request.getParameter("username");
         String firstName = request.getParameter("firstName");
         String lastName = request.getParameter("lastName");
-        boolean gender = Boolean.parseBoolean(request.getParameter("gender"));
+        String genderParam = request.getParameter("gender");
         String email = request.getParameter("email");
         String mobile = request.getParameter("mobile");
         String password = request.getParameter("password");
         String confirmPassword = request.getParameter("confirmPassword");
 
+        // Store form data in request to preserve it in case of validation failure
+        request.setAttribute("formData", Map.of(
+            "username", username != null ? username : "",
+            "firstName", firstName != null ? firstName : "",
+            "lastName", lastName != null ? lastName : "",
+            "gender", genderParam != null ? genderParam : "",
+            "email", email != null ? email : "",
+            "mobile", mobile != null ? mobile : ""
+        ));
+
+        // Server-side validation
+        if (username == null || username.trim().isEmpty() ||
+            firstName == null || firstName.trim().isEmpty() ||
+            lastName == null || lastName.trim().isEmpty() ||
+            genderParam == null || genderParam.trim().isEmpty() ||
+            email == null || email.trim().isEmpty() ||
+            mobile == null || mobile.trim().isEmpty() ||
+            password == null || password.trim().isEmpty() ||
+            confirmPassword == null || confirmPassword.trim().isEmpty()) {
+            
+            session.setAttribute("toastMessage", "All fields are required");
+            session.setAttribute("toastType", "error");
+            return REGISTER_PAGE;
+        }
+
+        boolean gender = Boolean.parseBoolean(genderParam);
+
         // Kiểm tra mật khẩu và xác nhận mật khẩu có khớp không
         if (!password.equals(confirmPassword)) {
-            request.setAttribute("error", "Password and confirm password not matching");
+            session.setAttribute("toastMessage", "Password and confirm password do not match");
+            session.setAttribute("toastType", "error");
             return REGISTER_PAGE;
         }
 
@@ -150,17 +184,19 @@ public class AuthenController extends HttpServlet {
                 .phone(mobile)
                 .email(email)
                 .password(MD5PasswordEncoderUtils.encodeMD5(password))
-                .role(GlobalConfig.ROLE_STUDENT)
-                .isActive(false)
-                .status(gender)
+                .role(GlobalConfig.ROLE_USER)
+                // .stat(false)
+                .status(false)
                 .build();
         Account accountFoundByEmail = accountDAO.findByEmail(account);
 
         if (accountFoundByEmail != null) {
-            if (accountFoundByEmail.getUsername().equalsIgnoreCase(email)) {
-                request.setAttribute("error", "Username already exist!!");
+            if (accountFoundByEmail.getUsername().equalsIgnoreCase(username)) {
+                session.setAttribute("toastMessage", "Username already exists!");
+                session.setAttribute("toastType", "error");
             } else {
-                request.setAttribute("error", "Email already exists!");
+                session.setAttribute("toastMessage", "Email already exists!");
+                session.setAttribute("toastType", "error");
             }
             url = REGISTER_PAGE;
         } else {
@@ -168,7 +204,6 @@ public class AuthenController extends HttpServlet {
             int accountId = accountDAO.insert(account);
             if (accountId > 0) {
                 // Tạo session cho việc kích hoạt tài khoản sau này
-                HttpSession session = request.getSession();
                 account.setUserId(accountId);
                 session.setAttribute(GlobalConfig.SESSION_ACCOUNT, account);
                 session.setAttribute("email", email);
@@ -181,7 +216,8 @@ public class AuthenController extends HttpServlet {
 
                 url = VERIFY_OTP_PAGE;
             } else {
-                request.setAttribute("error", "Failed to create account. Please try again.");
+                session.setAttribute("toastMessage", "Failed to create account. Please try again.");
+                session.setAttribute("toastType", "error");
                 url = REGISTER_PAGE;
             }
         }
@@ -257,7 +293,7 @@ public class AuthenController extends HttpServlet {
     private String handleAccountActivation(HttpServletRequest request, HttpSession session) {
         Account account = (Account) session.getAttribute(GlobalConfig.SESSION_ACCOUNT);
         if (account != null) {
-            account.setIsActive(true);
+            account.setStatus(true);
             accountDAO.activateAccount(account.getUserId());
             request.setAttribute("message", "Your account has been successfully activated!");
             return HOME_PAGE;
@@ -285,8 +321,21 @@ public class AuthenController extends HttpServlet {
         String newPassword = request.getParameter("newPassword");
         String confirmPassword = request.getParameter("confirmPassword");
 
+        // Kiểm tra xem mật khẩu mới và xác nhận mật khẩu có khớp không
+        if (newPassword == null || newPassword.trim().isEmpty() || confirmPassword == null || confirmPassword.trim().isEmpty()) {
+            session.setAttribute("toastMessage", "New password and confirm password are required.");
+            session.setAttribute("toastType", "error");
+            return RESET_PASSWORD_PAGE;
+        }
+
         if (!newPassword.equals(confirmPassword)) {
             session.setAttribute("toastMessage", "Passwords do not match.");
+            session.setAttribute("toastType", "error");
+            return RESET_PASSWORD_PAGE;
+        }
+
+        if (!isValidPassword(newPassword)) {
+            session.setAttribute("toastMessage", "Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, and one number.");
             session.setAttribute("toastType", "error");
             return RESET_PASSWORD_PAGE;
         }
@@ -306,6 +355,10 @@ public class AuthenController extends HttpServlet {
             session.setAttribute("toastType", "error");
             return RESET_PASSWORD_PAGE;
         }
+    }
+
+    private boolean isValidPassword(String password) {
+        return password.matches(PASSWORD_COMPLEXITY_REGEX); // Kiểm tra mật khẩu theo regex
     }
 
     private String fakeLogin(HttpServletRequest request, HttpServletResponse response) {
